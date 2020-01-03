@@ -4,16 +4,19 @@ import scipy.optimize as spy
 
 from AstroLib_Plots import Plot, Subplot
 
-# pl = Plot('Test', n=1, m=1)
+pl = Plot('Test', nrows = 2, mcols = 2)
+pl.createPlot()
 
-# plt.save('Test.fig')
-# pl.show()
-
-x = np.arange(0,100,1)
+x = np.arange(0, 100,1)
 y = x*2
 
-pl = Subplot('Test0', 'Test0', 1, type_plot = 'scatter')
-pl.size(titleSize = 20)
-pl.plot(x,y, xlabel = 'x label', markers = ['o'], grid = True)
+plS = Subplot('Test0', 'Test0', type_plot = 'scatter')
+plS.size(titleSize = 20)
+
+plS2 = Subplot('Test1', 'Test1', type_plot = 'scatter')
+plS2.size(titleSize = 5)
+
+pl.addSubplot(plS, x, y, 1, xlabel = 'x label', markers = ['o'], grid = True)
+pl.addSubplot(plS2, x, y, 2, xlabel = 'x label', markers = ['x'], grid = True)
 
 pl.show()
