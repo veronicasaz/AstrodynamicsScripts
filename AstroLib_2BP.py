@@ -2,11 +2,46 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.optimize as spy
 
+from . import AstroLib_Basic as AL_BF
+
 # import ipynb.fs.full.AstroLibrary_BasicFunctions as AL_BF #Use other ipynb documents
 
 ################################################################################
 # CREATE BODY WITH ITS CHARACTERISTICS
 ################################################################################
+class Spacecraft:
+    def __init__(self, *args, **kwargs):
+        # Propulsive parameters
+        self.Isp = kwargs.get('Isp', 3100)
+        self.m_dry = kwargs.get('m_dry', 747)
+        self.T = kwargs.get('T', 90e-3)
+        self.g0 = kwargs.get('g0', AL_BF.g0)
+
+    def MassChange(self, m, deltav): 
+        """
+        MassChange: change (decrease) mass of the spacecraft when an impulse is applied
+        Inputs:
+            m: current mass of the spacecraft (fuel+drymass)
+            deltav: magnitude of the impulse applied
+        Outputs:
+            mf: final mass
+        """
+        mf = m * np.exp( -deltav/(self.g0 * self.Isp) )
+        return mf
+
+    def MassChangeInverse(self, m, deltav):  
+        """
+        MassChangeInverse: change (increase) the mass to obtaine the mass of the spacecraft before
+                an impulse was applied
+        Inputs: 
+            m: current mass of the spacecraft (fuel+drymass)
+            deltav: magnitude of the impulse applied
+        Outputs:
+            mf: final mass
+        """
+        mi = m/np.exp( -deltav /(self.g0 * self.Isp) )
+        return mi
+
 class Body:
     """
     Body: contains the main characteristics of a celestial body.
@@ -18,14 +53,14 @@ class Body:
         Additional parameters:
             mu: gravitational parameter of the body. If it is not given, it is calculated as G*Mass
     """
-    def __init__(self, name, color, Mass,radius, *args, **kwargs):
+    def __init__(self, name, color, Mass = 0, radius = 0, *args, **kwargs):
         self.name = name
         self.R = radius
         self.M = Mass
         self.color = color
-        self.mu = kwargs.get('mu', self.M * AL_BF.Constants().G) #if it is not given, it is calculated with the mass
+        self.mu = kwargs.get('mu', self.M * AL_BF.ConstantsBook().G) #if it is not given, it is calculated with the mass
         self.orb = kwargs.get('orbit', 'No information of the orbit') # Orbit of the body
-        
+
     def addOrbit(self,orbit):
         """
 
@@ -43,10 +78,8 @@ class CircularOrbit:
         self.CentralBody = CentralBody
         self.Body = kwargs.get('Body', 'Unknown')
         
-        mu = self.CentralBody.mu
-        
         # Mean motion, period of the orbit
-        self.n = np.sqrt(mu / self.a**3) 
+        self.n = np.sqrt(self.CentralBody.mu / self.a**3) 
         self.T = 2*np.pi / self.n
 
 
@@ -76,51 +109,40 @@ class BodyOrbit:
     """
     def __init__(self, x, typeParam, Body, *args, **kwargs):
         
-        self.Body = Body
+        self.CentralBody = Body
         
         ######################################
         #### Case 1: Keplerian Elements J2000 + centennial rates
         ######################################
         # Obtain Keplerian elements at a given date (in Julian Centuries)
         
-        units = kwargs.get('units', 'rad')
+        units_input = kwargs.get('unitsI', 'rad')
         
         if typeParam == 'Keplerian_J2000':
             a,e,i,L,varpi,RAAN = x[0,:] + x[1,:]*x[2,0]
             omega = varpi - RAAN
             M = L - varpi 
-            print('M',M)
             
-#             for angle in [i,RAAN,omega,M]: #Correct for more than 360 deg
-#                 angle = AL_BF.correctAngle(angle, units)
-        
+
         ######################################
         #### Case 1: Keplerian Elements given
         ######################################
         elif typeParam == 'Keplerian':
-            a,e,i,RAAN,omega,M = x
+            self.a,self.e,self.i,self.RAAN,self.omega,self.M = x
 
         if typeParam == 'Keplerian' or typeParam == 'Keplerian_J2000':
             
-            if units == 'deg': #Operations are done in radians
-                for angle in [i,RAAN,omega,M]:
-                    angle = AL_BF.deg2rad(angle)
-            
-            self.a = a
-            self.e = e
-            self.i = i
-            self.RAAN = RAAN
-            self.omega = omega
-            self.M = M
-            
+            if units_input == 'deg': #Operations are done in radians
+                [self.i,self.RAAN,self.omega,self.M] = [AL_BF.deg2rad(angle) for angle in [self.i,self.RAAN,self.omega,self.M]]
+
             #Obtain the eccentric and true anomaly
-            self.E = Kepler(self.M, self.e,'Mean')[1]
-            self.theta = Kepler(self.E,self.e,'Eccentric')[0]
+            self.theta, self.E, self.M = Kepler(self.M, self.e,'Mean')
             
             #Obtain the cartesian coordinates
-            self.r = self.Kepl2Cart()[0:3]
-            self.v = self.Kepl2Cart()[3:]
-            self.h = self.angularMomentum()
+            x = self.Kepl2Cart()
+            self.r = x[0:3]
+            self.v = x[3:]
+            self.h = np.cross(self.r, self.v)
                 
         ######################################
         #### Case 3: Cartesian Elements given"
@@ -133,7 +155,7 @@ class BodyOrbit:
             self.r_mag = np.linalg.norm(self.r) # magnitude of the position vector 
             self.v_mag = np.linalg.norm(self.v) # magnitude of the velocity vector 
             
-            self.h = self.angularMomentum()
+            self.h = np.cross(self.r, self.v)
             self.h_mag = np.linalg.norm(self.h) 
             self.N = np.cross(np.array([0,0,1]),self.h) 
             self.N_mag = np.linalg.norm(self.N)
@@ -165,8 +187,7 @@ class BodyOrbit:
                 if (np.dot(np.cross(self.e_vec,self.r),self.h)) <= 0: 
                     self.theta = -self.theta
 
-            self.M = Kepler(self.theta,self.e,'True')[2] #Mean anomaly
-            self.E = Kepler(self.M, self.e,'Mean')[1] #Eccentric anomaly        
+            self.theta, self.E, self.M = Kepler(self.theta,self.e,'True') #Mean anomaly
             
         else:
             print('Warning: Specify the type of elements')
@@ -175,32 +196,24 @@ class BodyOrbit:
         ## More parameters of the orbit
         ######################################
         #Create a vector with all the keplerian elements
-        if units == 'deg':
-            for angle in [self.i,self.RAAN,self.omega,self.M]: #Correct for more than 360 deg
-                angle = AL_BF.rad2deg(angle)
                 
         self.KeplerElem = np.array([self.a,self.e,self.i,self.RAAN,self.omega,self.M])         
-        
+        self.KeplerElem_deg = np.zeros(6)
+        self.KeplerElem_deg[0:2] = [self.a,self.e]
+        for item, angle in enumerate([self.i,self.RAAN,self.omega,self.M]):
+            self.KeplerElem_deg[2+item] = AL_BF.rad2deg(angle)
+
         #Mean motion, period of the orbit
         self.n = np.sqrt(Body.mu/self.a**3) 
         self.T = 2*np.pi * np.sqrt(self.a**3/Body.mu)
         
-        #Semi-latus rectum, 
+        #Geometry of the elliptic trajectory
         self.p = self.a * (1-self.e**2)
         self.rp = self.a * (1-self.e)
         self.ra = self.a * (1+self.e)
         self.b = self.a * np.sqrt(1-self.e**2)
 
-    def angularMomentum(self):
-        """
-        angularMomentum: calculates the angular momentum of the orbit given the position and velocity vectors
-        inputs:
-        outputs:
-            h: angular velocity vector
-        """
-        h = np.cross(self.r,self.v) # angular momentum
-        return h
-    
+
     def Kepl2Cart(self, *args, **kwargs):
         """
         Kepl2Cart: transform from Keplerian elements to cartesian coordinates.
@@ -209,7 +222,7 @@ class BodyOrbit:
             [x,y,z,xdot,ydot,zdot]: state of the body given by its position and velocity vectors.
         """
         givenElements = kwargs.get('givenElements', 'False') 
-        if givenElements != 'False':
+        if type(givenElements) != str:
             [a,e,i,RAAN,omega,M,theta] = givenElements
         else:
             [a,e,i,RAAN,omega,M,theta] = np.array([self.a,self.e,self.i,self.RAAN,self.omega,self.M,self.theta]) 
@@ -221,7 +234,7 @@ class BodyOrbit:
         n1 = np.sin(omega)*np.sin(i)
         n2 = np.cos(omega)*np.sin(i)
 
-        H = np.sqrt(self.Body.mu*a*(1-e**2)) #magnitude of the angular momentum
+        H = np.sqrt(self.CentralBody.mu*a*(1-e**2)) #magnitude of the angular momentum
         r = a*(1-e*np.cos(self.E)) #magnitude of the position vector at a given moment
 
         #Position vector
@@ -230,62 +243,38 @@ class BodyOrbit:
         z = n1*r*np.cos(theta) + n2*r*np.sin(theta)
 
         #Velocity vector
-        xdot = self.Body.mu/H * (-l1*np.sin(theta) + l2*(e+np.cos(theta)))
-        ydot = self.Body.mu/H * (-m1*np.sin(theta) + m2*(e+np.cos(theta)))
-        zdot = self.Body.mu/H * (-n1*np.sin(theta) + n2*(e+np.cos(theta)))
+        xdot = self.CentralBody.mu/H * (-l1*np.sin(theta) + l2*(e+np.cos(theta)))
+        ydot = self.CentralBody.mu/H * (-m1*np.sin(theta) + m2*(e+np.cos(theta)))
+        zdot = self.CentralBody.mu/H * (-n1*np.sin(theta) + n2*(e+np.cos(theta)))
 
         return [x,y,z,xdot,ydot,zdot]
+
     
-    def rotateToPoint(self,rv0, r,v):
-        angle = np.arctan(rv0[1]/rv0[0])
-        if rv0[0] < 0:
-            angle += np.pi
-        angle *= 1
-        
-        matrix = np.array([[np.cos(angle), -np.sin(angle),0],[np.sin(angle),np.cos(angle),0],[0,0,1]])
-        rv = np.zeros(6)
-        rv[0:3] = matrix.dot(r)
-        rv[3:] = matrix.dot(v)
-        return rv
-    
-    def Propagation(self,t,typeParam, *args, **kwargs):
+    def Propagation(self,t, typeParam, *args, **kwargs):
         """
         Propagation: propagate the mean anomaly M in time.
         Inputs: 
-            t: time in seconds at which the position wants to be known
+            t: time in seconds at which the position wants to be known with
+                respect to the given state in the init
         Outputs: 
             M: new mean anomaly
         """
-        
-        rv0 = kwargs.get('rv0', 'none')  #Initial angle to rotate
-        
-        self.M += self.n*t
-        
-        
-        while self.M > 2*np.pi:
-            self.M -= 2*np.pi
-        if self.M < 0:
-            self.M += 2*np.pi 
+                
+        self.M += self.n*t # Propagate in time
+        self.M = AL_BF.correctAngle(self.M, 'rad') # Correct for more than 306deg
             
-        self.E = Kepler(self.M, self.e,'Mean')[1]
-        self.theta = Kepler(self.M, self.e,'Mean')[0]
+        self.theta, self.E, self.M = Kepler(self.M, self.e,'Mean')
+        # self.theta = Kepler(self.M, self.e,'Mean')[0]
         
         x = np.array([self.a,self.e,self.i,self.RAAN,self.omega,self.M,self.theta])
         if typeParam == 'Keplerian':
             return x
         else:
             #Obtain the cartesian coordinates
-            r = self.Kepl2Cart(givenElements = x)[0:3]
-            v = self.Kepl2Cart(givenElements = x )[3:]
-            
-            rv = self.rotateToPoint(rv0, r,v)
-            self.r = rv[0:3]
-            self.v = rv[3:]
-            return rv
-#             self.h = self.angularMomentum()
-            
+            x = self.Kepl2Cart(givenElements = x)
+            return x
     
-    def PlotOrbit(self,Body):
+    def PlotOrbit(self):
         """
         PlotOrbit: plot the relative position of the planets at a given date for each one
         Inputs: 
@@ -318,7 +307,7 @@ class BodyOrbit:
         plt.plot([self.r[0],0],[self.r[1],0],color = 'black') #Plot line from planet to the Sun
         plt.plot(self.r[0],self.r[1], marker = "o",markersize = 20, color = 'black', alpha = 0.5,label = 'Position') # Plot planet
 
-        plt.plot(0,0,Markersize = 695508/15000,color= Body.color,marker="o")
+        plt.plot(0,0,Markersize = 695508/15000,color= self.CentralBody.color,marker="o")
         
         plt.title('2D Trajectory',size = 22)
 
@@ -339,7 +328,8 @@ class BodyOrbit:
 #         lgnd.legendHandles[0]._legmarker.set_markersize(20)
         
     #     plt.savefig("_%i.png"%i,dpi=200,bbox_inches='tight')
-#         plt.show()
+        plt.show()
+
 
 
 ################################################################################
