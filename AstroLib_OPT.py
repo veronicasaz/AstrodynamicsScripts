@@ -32,7 +32,7 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
         max_iter_success
         elitism: percentage of population elitism
     """
-    x_add = kwargs.get('x_add', None)
+    x_add = kwargs.get('x_add', False)
     ind = kwargs.get('ind', 100)
     cuts = kwargs.get('cuts', 1)
     tol = kwargs.get('tol', 1e-4)
@@ -133,9 +133,9 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
         # print(counter, "Minimum: ", minVal)
         counter += 1 #Count generations 
         
-    print("minimum:", lastMin)
-    print("Iterations:", counter)
-    print("Iterations with no improvement:", noImprove)
+    # print("minimum:", lastMin)
+    # print("Iterations:", counter)
+    # print("Iterations with no improvement:", noImprove)
     
     return x_minVal, lastMin
 
@@ -387,7 +387,6 @@ class MyTakeStep(object):
     def __init__(self, Nimp, bnds):
         self.Nimp = Nimp
         self.bnds = bnds
-        None
     def __call__(self, x):
         self.call(x)
         return x
@@ -465,12 +464,16 @@ def MonotonicBasinHopping(f, x, take_step, *args, **kwargs):
     niter_local = kwargs.get('niter_local', 50)
     bnds = kwargs.get('bnds', None)
     cons =  kwargs.get('cons', None)
-
+    jumpMagnitude_default =  kwargs.get('jumpMagnitude', 0.1) # Small jumps to search around the minimum
+    tolLocal = kwargs.get('tolLocal', 1e2)
+    tolGlobal = kwargs.get('tolGobal', 500)
+    
     n_itercounter = 1
     n_noimprove = 0
     bestMin =  f(x)
+    jumpMagnitude = 1
 
-    jumpMagnitude = 0.1 # Small jumps to search around the minimum
+    previousMin = bestMin
 
     while n_itercounter < niter:
         n_itercounter += 1
@@ -480,40 +483,55 @@ def MonotonicBasinHopping(f, x, take_step, *args, **kwargs):
         while feasible == False and bnds != None:
             x_test = take_step.call(x, jumpMagnitude)
             feasible = check_feasibility(x_test, bnds)
-        x_test
 
         # Local optimization 
         # solutionLocal = spy.minimize(f, x, method = 'COBYLA', constraints = cons, options = {'maxiter': niter_local} )
-        solutionLocal = spy.minimize(f, x_test, method = 'SLSQP', tol = 1e2, bounds = bnds, options = {'maxiter': niter_local} )
+        solutionLocal = spy.minimize(f, x_test, method = 'SLSQP', \
+                tol = tolLocal, bounds = bnds, options = {'maxiter': niter_local} )
         currentMin = f( solutionLocal.x )
         feasible = check_feasibility(solutionLocal.x, bnds) 
 
         # if feasible == True: # jump from current point even if it is not optimum
         #     x = solutionLocal.x
-        print(currentMin)
 
-        # Check improvement
-        if currentMin > bestMin: # No improvement in this iteration
-            n_noimprove += 1
-            accepted = False
-        elif feasible == True: # Minimum improves and it is feasible
-            # Save best trajectory
-            x = solutionLocal.x # jump always from the current min
+        # Check te current point from which to jump: after doing a long jump or
+        # when the solution is improved
+        if jumpMagnitude == 1 or currentMin < previousMin:
+            x = solutionLocal.x
+            
+        # Check improvement      
+        if currentMin < bestMin and feasible == True: # Improvement            
             Best = x
             bestMin = currentMin
-            n_noimprove = 0
             accepted = True
-        else:
-            n_noimprove += 1
-            accepted = False
 
-        if n_noimprove == niter_success: # jump to a random point of search space
+            # If the improvement is not large, assume it is not improvement
+            if (previousMin - currentMin ) < tolGlobal: 
+                n_noimprove += 1
+            else:
+                n_noimprove = 0
+            jumpMagnitude = jumpMagnitude_default
+
+        elif n_noimprove == niter_success: # Not much improvement
+            accepted = False
             jumpMagnitude = 1
+            n_noimprove = 0 # Restart count so that it performs jumps around a point
+        else:
+            accepted = False
+            jumpMagnitude = jumpMagnitude_default
+            n_noimprove += 1        
+
+        previousMin = currentMin
+
+        # # Save results every 5 iter
+        # if n_itercounter % 10 == 0:
+        #     AL_BF.writeData(Best, 'w', 'SolutionMBH_self.txt')
         
         print("iter", n_itercounter)
+        print("Current min vs best one", currentMin, bestMin)
         print_fun(f, x, accepted)
 
     # Print solution 
-    print_sol(Best, bestMin, n_itercounter, niter_success)
+    # print_sol(Best, bestMin, n_itercounter, niter_success)
     return Best, bestMin
         
