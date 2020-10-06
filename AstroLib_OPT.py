@@ -84,7 +84,7 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
         #Separate into the number of parents  
         pop = np.zeros(np.shape(pop_0))
         pop[:ind_elit,:] = children[:ind_elit,:] #Keep best ones
-        np.random.shuffle(children[ind_elit:,:]) #shuffle the others
+        np.random.shuffle(children[:,:]) #shuffle the others
         
 
         for j in range ( (len(children)-ind_elit) //2 ):
@@ -130,17 +130,17 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
             noImprove = 0
             Best[counter,:] = Sol[0,:] 
         
-        # print(counter, "Minimum: ", minVal)
+        print(counter, "Minimum: ", minVal)
         counter += 1 #Count generations 
+        if counter % 20 == 0:
+            AL_BF.writeData(x_minVal, 'w', 'SolutionEA.txt')
         
-    # print("minimum:", lastMin)
-    # print("Iterations:", counter)
-    # print("Iterations with no improvement:", noImprove)
+        # print(counter)
+    print("minimum:", lastMin)
+    print("Iterations:", counter)
+    print("Iterations with no improvement:", noImprove)
     
     return x_minVal, lastMin
-
-
-# In[7]:
 
 
 # # Test
@@ -466,14 +466,15 @@ def MonotonicBasinHopping(f, x, take_step, *args, **kwargs):
     cons =  kwargs.get('cons', None)
     jumpMagnitude_default =  kwargs.get('jumpMagnitude', 0.1) # Small jumps to search around the minimum
     tolLocal = kwargs.get('tolLocal', 1e2)
-    tolGlobal = kwargs.get('tolGobal', 500)
+    tolGlobal = kwargs.get('tolGobal', 1e-5)
     
     n_itercounter = 1
     n_noimprove = 0
-    bestMin =  f(x)
-    jumpMagnitude = 1
 
-    previousMin = bestMin
+    Best = x
+    bestMin =  f(x)
+    previousMin = f(x)
+    jumpMagnitude = jumpMagnitude_default
 
     while n_itercounter < niter:
         n_itercounter += 1
@@ -495,7 +496,7 @@ def MonotonicBasinHopping(f, x, take_step, *args, **kwargs):
         #     x = solutionLocal.x
 
         # Check te current point from which to jump: after doing a long jump or
-        # when the solution is improved
+        # when the solution is improved        
         if jumpMagnitude == 1 or currentMin < previousMin:
             x = solutionLocal.x
             
@@ -523,9 +524,9 @@ def MonotonicBasinHopping(f, x, take_step, *args, **kwargs):
 
         previousMin = currentMin
 
-        # # Save results every 5 iter
-        # if n_itercounter % 10 == 0:
-        #     AL_BF.writeData(Best, 'w', 'SolutionMBH_self.txt')
+        # Save results every 5 iter
+        if n_itercounter % 20 == 0:
+            AL_BF.writeData(Best, 'w', 'SolutionMBH_self.txt')
         
         print("iter", n_itercounter)
         print("Current min vs best one", currentMin, bestMin)
