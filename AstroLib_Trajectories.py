@@ -554,7 +554,6 @@ class repeatingOrbit:
 
 # # Dual axis 
 
-# In[5]:
 
 
 class dualAxis:

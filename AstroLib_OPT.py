@@ -16,7 +16,6 @@ import AstroLibraries.AstroLib_Basic as AL_BF
 # EVOLUTIONARY ALGORITHM
 ###############################################
 # Random initialization--> fitness calculation--> offspring creation --> immigration, mutation --> convergence criterion
-
 def EvolAlgorithm(f, bounds, *args, **kwargs):
     """
     EvolAlgorithm: evolutionary algorithm
@@ -31,6 +30,8 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
         max_iter: maximum number of iterations (generations)
         max_iter_success
         elitism: percentage of population elitism
+        bulk_fitness: if True, the data has to be passed to the function all 
+                    at once as a matrix with each row being an individual
     """
     x_add = kwargs.get('x_add', False)
     ind = kwargs.get('ind', 100)
@@ -40,6 +41,165 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
     max_iter_success = kwargs.get('max_iter_success', 1e2)
     elitism = kwargs.get('elitism',0.1)
     mut = kwargs.get('mutation',0.01)
+    cons = kwargs.get('cons', None)
+    bulk = kwargs.get('bulk_fitness', False)
+
+    
+    def f_evaluate(pop_0):
+        if bulk == True:
+            if x_add == False:
+                pop_0[:,0] = f(pop_0[:,1:])
+            else:
+                pop_0[:,0] = f(pop_0[:,1:], x_add)
+        else:
+            if x_add == False: # No additional arguments needed
+                for i in range(ind):
+                    pop_0[i,0] = f(pop_0[i,1:])
+            else:
+                for i in range(ind):
+                    pop_0[i,0] = f(pop_0[i,1:], x_add)
+
+        return pop_0
+
+    ###############################################
+    ###### GENERATION OF INITIAL POPULATION #######
+    ###############################################
+    pop_0 = np.zeros([ind, len(bounds)+1])
+    for i in range(len(bounds)):
+        pop_0[:,i+1] = np.random.rand(ind) * (bounds[i][1]-bounds[i][0]) + bounds[i][0]
+
+    ###############################################
+    ###### FITNESS EVALUATION               #######
+    ###############################################
+    pop_0 = f_evaluate(pop_0)
+    
+    Sol = pop_0[pop_0[:,0].argsort()]
+    minVal = min(Sol[:,0])
+    x_minVal = Sol[0,:]
+    
+    ###############################################
+    ###### NEXT GENERATION                  #######
+    ###############################################
+    noImprove = 0
+    counter = 0
+    lastMin = minVal
+    
+    Best = np.zeros([max_iter+1,len(bounds)+1])
+    while noImprove <= max_iter_success and counter <= max_iter :
+        
+        ###############################################
+        #Generate descendents
+
+        #Elitism
+        ind_elit = int(round(elitism*ind))
+
+        children = np.zeros(np.shape(pop_0))
+        children[:,1:] = Sol[:,1:]
+
+        #Separate into the number of parents  
+        pop = np.zeros(np.shape(pop_0))
+        pop[:ind_elit,:] = children[:ind_elit,:] #Keep best ones
+        np.random.shuffle(children[:,:]) #shuffle the others
+        
+
+        for j in range ( (len(children)-ind_elit) //2 ):
+            if len(bounds) == 2:
+                cut = 1
+            else:
+                cut = np.random.randint(1,len(bounds)-1)
+
+            pop[ind_elit +2*j,1:] = np.concatenate((children[2*j,1:cut+1],children[2*j +1,cut+1:]),axis = 0)
+            pop[ind_elit+ 2*j + 1,1:] = np.concatenate((children[2*j+1,1:cut+1],children[2*j ,cut+1:]),axis = 0)
+        
+        if (len(children)-ind_elit) %2 != 0:
+            pop[-1,:] = children[-ind_elit,:]
+
+        #Mutation
+        for i in range(ind):
+            for j in range(len(bounds)):
+                if np.random.rand(1) < mut: #probability of mut                    
+                    pop[i,j+1] =  np.random.rand(1) * (bounds[j][1]-bounds[j][0]) + bounds[j][0]
+        
+        ###############################################
+        # Fitness
+        pop = f_evaluate(pop)
+
+        Sol = pop[pop[:,0].argsort()]
+        minVal = min(Sol[:,0])
+
+        ###############################################
+        #Check convergence        
+        if  minVal >= lastMin: 
+            noImprove += 1
+#         elif abs(lastMin-minVal)/lastMin > tol:
+#             noImprove += 1
+        else:
+#             print('here')
+            lastMin = minVal 
+            x_minVal = Sol[0,1:]
+            noImprove = 0
+            Best[counter,:] = Sol[0,:] 
+        
+        print(counter, "Minimum: ", minVal)
+        counter += 1 #Count generations 
+        if counter % 20 == 0:
+            AL_BF.writeData(x_minVal, 'w', 'SolutionEA.txt')
+        
+        # print(counter)
+    print("minimum:", lastMin)
+    print("Iterations:", counter)
+    print("Iterations with no improvement:", noImprove)
+    
+    return x_minVal, lastMin
+
+
+# # Test
+# bnds = (bnd_tflight,bnd_vE)
+# for i in range(Nimp):
+#     bnds += (bnd_deltavmag,)
+# for i in range(Nimp):
+#     bnds += (bnd_deltavang,)
+# bnd_1 = (1,4)
+# bnds = (bnd_1,bnd_1,bnd_1)
+
+# def f(x,y):
+#     return (2*x[0]+x[1]+x[2])
+
+# x = EvolAlgorithm(f, [2,3,4], bnds, [],ind=100, max_iter = 1000, mutation = 0.01, elitism = 0.1)
+# x
+
+#######################################3
+# EVOLUTIONARY ALGORITHM WITH CONSTRAINT PENALIZATION
+#######################################
+      
+def EvolAlgorithm_cons(f, bounds, *args, **kwargs):
+    """
+    EvolAlgorithm: evolutionary algorithm
+    INPUTS:
+        f: function to be analyzed
+        x: decision variables
+        bounds: bounds of x to initialize the random function
+        x_add: additional parameters for the function. As a vector
+        ind: number of individuals. 
+        cuts: number of cuts to the variable
+        tol: tolerance for convergence
+        max_iter: maximum number of iterations (generations)
+        max_iter_success
+        elitism: percentage of population elitism
+        mut: mutation rate
+        immig: migration rate (new individuals)
+    """
+    x_add = kwargs.get('x_add', False)
+    ind = kwargs.get('ind', 100)
+    cuts = kwargs.get('cuts', 1)
+    tol = kwargs.get('tol', 1e-4)
+    max_iter = kwargs.get('max_iter', 1e3)
+    max_iter_success = kwargs.get('max_iter_success', 1e2)
+    elitism = kwargs.get('elitism',0.1)
+    mut = kwargs.get('mutation',0.01)
+    immig = kwargs.get('immig',0.01)
+    cons = kwargs.get('cons', None)
+
     
     ###############################################
     ###### GENERATION OF INITIAL POPULATION #######
@@ -47,6 +207,8 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
     pop_0 = np.zeros([ind, len(bounds)+1])
     for i in range(len(bounds)):
         pop_0[:,i+1] = np.random.rand(ind) * (bounds[i][1]-bounds[i][0]) + bounds[i][0]
+    
+ 
     
     ###############################################
     ###### FITNESS EVALUATION               #######
@@ -58,6 +220,10 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
         for i in range(ind):
             pop_0[i,0] = f(pop_0[i,1:], x_add)
     
+    feas =  cons[0](pop_0[:,1:])
+    print('Number feasible', np.count_nonzero(feas==0))
+    pop_0[:, 0] += feas*cons[1] # Add penalty to unfeasible ones
+
     Sol = pop_0[pop_0[:,0].argsort()]
     minVal = min(Sol[:,0])
     x_minVal = Sol[0,:]
@@ -105,6 +271,12 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
                 if np.random.rand(1) < mut: #probability of mut                    
                     pop[i,j+1] =  np.random.rand(1) * (bounds[j][1]-bounds[j][0]) + bounds[j][0]
         
+        #Immigration
+        ind_immig = int(round(immig*ind))
+        for i in range(len(bounds)):
+            pop[-ind_immig:, i+1] = np.random.rand(ind_immig) * (bounds[i][1]-bounds[i][0]) + bounds[i][0]
+        
+
         ###############################################
         # Fitness
         if x_add == False: # No additional arguments needed
@@ -113,6 +285,10 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
         else:
             for i in range(ind):
                 pop[i,0] = f(pop[i,1:], x_add)
+
+        feas =  cons[0](pop[:,1:])
+        print('Number feasible', np.count_nonzero(feas==0))
+        pop[:, 0] += feas*cons[1] # Add penalty to unfeasible ones
 
         Sol = pop[pop[:,0].argsort()]
         minVal = min(Sol[:,0])
@@ -141,23 +317,6 @@ def EvolAlgorithm(f, bounds, *args, **kwargs):
     print("Iterations with no improvement:", noImprove)
     
     return x_minVal, lastMin
-
-
-# # Test
-# bnds = (bnd_tflight,bnd_vE)
-# for i in range(Nimp):
-#     bnds += (bnd_deltavmag,)
-# for i in range(Nimp):
-#     bnds += (bnd_deltavang,)
-# bnd_1 = (1,4)
-# bnds = (bnd_1,bnd_1,bnd_1)
-
-# def f(x,y):
-#     return (2*x[0]+x[1]+x[2])
-
-# x = EvolAlgorithm(f, [2,3,4], bnds, [],ind=100, max_iter = 1000, mutation = 0.01, elitism = 0.1)
-# x
-
 
 ###############################################
 # OTHERS
@@ -452,6 +611,12 @@ def check_feasibility(x, bnds):
 
     return feasible
 
+def check_constraints(x, cons):
+    value = cons['fun'](x)
+    if value == 0:
+        return True
+    else:
+        return False
 
 def MonotonicBasinHopping(f, x, take_step, *args, **kwargs):
     """
@@ -463,7 +628,7 @@ def MonotonicBasinHopping(f, x, take_step, *args, **kwargs):
     niter_success = kwargs.get('niter_success', 50)
     niter_local = kwargs.get('niter_local', 50)
     bnds = kwargs.get('bnds', None)
-    cons =  kwargs.get('cons', None)
+    cons =  kwargs.get('cons', 0)
     jumpMagnitude_default =  kwargs.get('jumpMagnitude', 0.1) # Small jumps to search around the minimum
     tolLocal = kwargs.get('tolLocal', 1e2)
     tolGlobal = kwargs.get('tolGobal', 1e-5)
@@ -484,11 +649,19 @@ def MonotonicBasinHopping(f, x, take_step, *args, **kwargs):
         while feasible == False and bnds != None:
             x_test = take_step.call(x, jumpMagnitude)
             feasible = check_feasibility(x_test, bnds)
+            # if feasible == True:
+            #     feasible = check_constraints(x, cons)
 
+        
         # Local optimization 
         # solutionLocal = spy.minimize(f, x, method = 'COBYLA', constraints = cons, options = {'maxiter': niter_local} )
-        solutionLocal = spy.minimize(f, x_test, method = 'SLSQP', \
+        if type(cons) == int:
+            solutionLocal = spy.minimize(f, x_test, method = 'SLSQP', \
                 tol = tolLocal, bounds = bnds, options = {'maxiter': niter_local} )
+        else:
+            solutionLocal = spy.minimize(f, x_test, method = 'SLSQP', \
+                tol = tolLocal, bounds = bnds, options = {'maxiter': niter_local},\
+                constraints = cons )
         currentMin = f( solutionLocal.x )
         feasible = check_feasibility(solutionLocal.x, bnds) 
 
