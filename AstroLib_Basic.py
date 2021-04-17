@@ -220,7 +220,10 @@ class ConstantsBook:
         self.mu_E = 398600.441 #km^3/s^2 Gravitational parameter Earth 
         self.mu_E_m = 3.98600441e14 #m^3/s^2 Gravitational parameter Earth 
         self.mu_J = 1.2669e8 #km^3/s^2 Gravitational parameter Jupiter
+        self.mu_J_m = 1.2669e17 #m^3/s^2 Gravitational parameter Jupiter
         self.mu_M = 4.2832e4 #km^3/s^2 Gravitational parameter Mars
         self.mu_M_m = 4.2832e13 #m^3/s^2 Gravitational parameter Mars
         self.mu_S = 1.327178e11 #km^3/s^2 Gravitational parameter Sun
-        self.mu_S_m = 1.327178e20 #m^3/s^2 Gravitational parameter Sun        
+        self.mu_S_m = 1.327178e20 #m^3/s^2 Gravitational parameter Sun    
+        
+        self.mu_V_m = 3.24859e14 #m^3/s^2  Not from this dataset

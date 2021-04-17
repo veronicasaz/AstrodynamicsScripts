@@ -384,3 +384,4 @@ if __name__ == "__main__":
 
     Fit.calculateFeasibility(decv, plot = True, thrust = 'tangential')
     Fit.printResult()
+ 
